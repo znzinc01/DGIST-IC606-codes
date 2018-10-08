@@ -11,3 +11,4 @@ Read miss rate: 16.63992972002597%
 Write miss rate: 13.55735012318642%
 Clean evictions: 7703
 Dirty evictions: 1967
+Checksum: 0x1152c43a
