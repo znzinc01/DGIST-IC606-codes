@@ -1,36 +1,35 @@
 from math import log2
 from datetime import datetime
-
-starttime = datetime.now()
-
-with open("./config.txt", "r") as config_file:
-    cache_size = int(config_file.readline())
-    ways = int(config_file.readline())
-    block_size = int(config_file.readline())
-
-
 """
 USER INPUT
 policy: int. Eviction Policy. 0 for LRU, 1 for pseudo-LRU
 benchmark: int. Benchmark selection: 0 for ping_trace,
            1:perlbench, 2:soplex, 3:povary, 4:libquantum, 5:astar, 6:xalancbmk (inside HW1_6_workloads folder)
-debug_mode: boolean. False for default. set to True to see procedure, execution time, etc.
+debug_mode: boolean. False for default. set to True to see procedure and execution time.
 """
-policy = 0
-benchmark = 0
+policy = 1
+benchmark = 1
 debug_mode = True
 """
-DO NOT MAKE CHANGES BELOW THIS COMMENT.
+THERE IS NO OPTIONAL VARIABLE BELOW THIS COMMENT.
 """
 policy_name = ["LRU", "pseudoLRU"]
 bench_name = ["ping_trace", "perlbench", "soplex", "povary", "libquantum", "astar", "xalancbmk"]
 bench_list = ["./ping_trace.out",
-             "./HW1_6_workloads/400_perlbench.out",
-             "./HW1_6_workloads/450_soplex.out",
-             "./HW1_6_workloads/453_povray.out",
-             "./HW1_6_workloads/462_libquantum.out",
-             "./HW1_6_workloads/473_astar.out",
-             "./HW1_6_workloads/483_xalancbmk.out"]
+              "./HW1_6_workloads/400_perlbench.out",
+              "./HW1_6_workloads/450_soplex.out",
+              "./HW1_6_workloads/453_povray.out",
+              "./HW1_6_workloads/462_libquantum.out",
+              "./HW1_6_workloads/473_astar.out",
+              "./HW1_6_workloads/483_xalancbmk.out"]
+
+start_time = datetime.now()
+
+with open("./config.txt", "r") as config_file:
+    cache_size = int(config_file.readline())
+    ways = int(config_file.readline())
+    way_bin_digits = int(log2(ways))
+    block_size = int(config_file.readline())
 
 
 # 1 word: 8byte
@@ -42,26 +41,27 @@ byte_offset = 3
 
 
 # Counters
-count_total = 0
-count_read = 0
-count_write = 0
-miss_read = 0
-miss_write = 0
-evict_clean = 0
-evict_dirty = 0
+count_total, count_read, count_write = 0, 0, 0
+miss_read, miss_write = 0, 0
+evict_clean, evict_dirty = 0, 0
 checksum = 0
 
 # cache[set][way] = {"Valid": int(0 or 1), "Dirty": int(0 or 1), "Tag": int, "Data": str(empty)}
 cache = [[{"Valid": 0, "Dirty": 0, "Tag": -1, "Data": ""} for i in range(ways)] for j in range(num_sets)]
 LRU = [[] for i in range(num_sets)]
-#pLRU = [[-1, -1] for i in range(num_sets)]
+pLRU = [[0 for i in range(ways - 1)]for j in range(num_sets)]
 
 
 def get_victim(set_index):
     if policy == 0:
         victim_way = LRU[set_index].pop(0)
     elif policy == 1:
-        pass
+        victim_way = 0
+        next_tree = 0
+        for i in range(way_bin_digits):
+            x = (way_bin_digits - 1) - i
+            victim_way += pLRU[set_index][next_tree] * (2 ** x)
+            next_tree += (2 ** (i + 1)) - 1 + (victim_way >> x)
     return victim_way
 
 
@@ -72,7 +72,13 @@ def update_policy(set_index, used_way):
         else:
             LRU[set_index].append(used_way)
     elif policy == 1:
-        pass
+        next_tree = 0
+        for i in range(way_bin_digits):
+            x = (way_bin_digits - 1) - i
+            current_bin_digit = int(used_way / (2 ** x)) % 2
+            if pLRU[set_index][next_tree] == current_bin_digit:
+                pLRU[set_index][next_tree] = (pLRU[set_index][next_tree] + 1) % 2
+            next_tree += (2 ** (i + 1)) + used_way >> x
 
 
 def get_index_tag(address):
@@ -104,16 +110,14 @@ def is_hit(address):
     return one_set.index(tag) if tag in one_set else -1
 
 
-def fetch_data(address):
-    index, tag = get_index_tag(address)
+def fetch_data(index, tag):
     way = get_empty_way(index)
     if way == -1:
-        evict(index)
-        way = get_empty_way(index)
+        way = evict(index)
     cache[index][way]["Valid"] = 1
     cache[index][way]["Tag"] = tag
     update_policy(index, way)
-    return index, way
+    return way
 
 
 def set_data(set_index, way):
@@ -134,15 +138,14 @@ with open(bench_list[benchmark], "r") as memoryio:
                 update_policy(index, way)
             else:
                 miss_read += 1
-                fetch_data(address)
+                fetch_data(index, tag)
         elif rw == "W":
             count_write += 1
             if not way == -1:
                 set_data(index, way)
             else:
                 miss_write += 1
-                t1, t2 = fetch_data(address)
-                set_data(t1, t2)
+                set_data(index, fetch_data(index, tag))
         if debug_mode and count_total % 1000000 == 0:
             print(count_total)
 
@@ -173,22 +176,5 @@ with open(file_name, "w") as resultio:
     resultio.write("Checksum: {}\n".format(checksum_hex))
 
 if debug_mode:
-    endtime = datetime.now()
-    print("Elapsed time:", endtime - starttime)
-
-"""
--- General Stats --
-Capacity: 16
-Way: 4
-Block size: 16
-Total accesses: 66974
-Read accesses: 52362
-Write accesses: 14612
-Read misses: 8713
-Write misses: 1981
-Read miss rate: 16.63992972002597%
-Write miss rate: 13.55735012318642%
-Clean evictions: 7703
-Dirty evictions: 1967
-Checksum: 0x1152c43a
-"""
+    end_time = datetime.now()
+    print("Elapsed time:", end_time - start_time)
