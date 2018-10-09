@@ -7,9 +7,9 @@ benchmark: int. Benchmark selection: 0 for ping_trace,
            1:perlbench, 2:soplex, 3:povary, 4:libquantum, 5:astar, 6:xalancbmk (inside HW1_6_workloads folder)
 debug_mode: boolean. False for default. set to True to see procedure and execution time.
 """
-option_policy = 1
-option_benchmark = 1
-option_debug_mode = True
+option_policy = 0
+option_benchmark = 0
+option_debug_mode = False
 """
 THERE IS NO OPTIONAL VARIABLE BELOW THIS COMMENT.
 """
@@ -198,7 +198,7 @@ class CacheHW1():
         # Write to .out file
         # To distinguish between LRU and pseudo-LRU, policy name is specified at the end of file name
         # (Which is not required from homework instruction)
-        file_name = "./{}_{}_{}_{}_{}.out".format(bench_name[benchmark_number], self.cache_size, self.ways,
+        file_name = "./results/{}_{}_{}_{}_{}.out".format(bench_name[benchmark_number], self.cache_size, self.ways,
                                                   self.block_size, policy_name[self.replacement_policy])
         with open(file_name, "w") as resultio:
             resultio.write("-- General Stats --\n")
