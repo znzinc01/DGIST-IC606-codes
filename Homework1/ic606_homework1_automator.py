@@ -209,11 +209,11 @@ class CacheHW1():
             print("Elapsed time:", end_time - start_time)
 
 
-for capacity in [4, 16, 64, 256, 1024]:
-    for associativity in [1, 2, 4, 8, 16]:
-        for block_size in [16, 32, 64,128]:
-            for a_policy in [0, 1]:
-                for a_bench in [1, 2, 3, 4, 5, 6]:
+for a_policy in [0, 1]:
+    for a_bench in [1, 2, 3, 4, 5, 6]:
+        for capacity in [4, 64, 1024]:
+            for associativity in [1, 4, 16]:
+                for block_size in [16, 32, 64, 128]:
                     print("Capacity: {}KB, Way: {}, Block size: {}B, policy:{}, benchmark: {}".format(
                         capacity, associativity, block_size, policy_name[a_policy], bench_name[a_bench]))
                     test_cache = CacheHW1(cache_size=capacity, ways=associativity, block_size=block_size,
