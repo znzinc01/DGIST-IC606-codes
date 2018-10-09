@@ -164,7 +164,7 @@ def set_data(set_index, way):
     :return: Returns nothing.
     """
     cache[set_index][way]["Dirty"] = 1
-    update_policy(index, way)
+    update_policy(set_index, way)
 
 
 # Read Data and compute
