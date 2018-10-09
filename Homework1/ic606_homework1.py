@@ -53,7 +53,7 @@ pLRU = [[0 for i in range(ways - 1)]for j in range(num_sets)]
 # Functions defined for modeling cache.
 def get_victim(set_index):
     """
-    Selects the vicim way based on each policy. policy is declared at the front of this code as a global variable.
+    Selects the victim way based on each policy. policy is declared at the front of this code as a global variable.
     :param set_index: int. The index of set to chose victim.
     :return victim_way: int. The index of way to be evicted.
     """
