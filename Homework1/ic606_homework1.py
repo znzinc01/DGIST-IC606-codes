@@ -7,6 +7,7 @@ benchmark: int. Benchmark selection: 0 for ping_trace,
            1:perlbench, 2:soplex, 3:povary, 4:libquantum, 5:astar, 6:xalancbmk (inside HW1_6_workloads folder)
 debug_mode: boolean. False for default. set to True to see procedure and execution time.
 """
+option_policy = 1
 option_benchmark = 1
 option_debug_mode = True
 """
