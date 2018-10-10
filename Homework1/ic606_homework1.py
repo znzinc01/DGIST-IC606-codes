@@ -67,7 +67,7 @@ class CacheHW1():
             for i in range(self.way_bin_digits):
                 x = (self.way_bin_digits - 1) - i
                 victim_way += self.pLRU[set_index][next_tree] * (2 ** x)
-                next_tree += (2 ** (i + 1)) - 1 + (victim_way >> x)
+                next_tree = (2 ** (i + 1)) - 1 + (victim_way >> x)
         return victim_way
 
     def update_policy(self, set_index, used_way):
@@ -89,7 +89,7 @@ class CacheHW1():
                 current_bin_digit = int(used_way / (2 ** x)) % 2
                 if self.pLRU[set_index][next_tree] == current_bin_digit:
                     self.pLRU[set_index][next_tree] = (self.pLRU[set_index][next_tree] + 1) % 2
-                next_tree += (2 ** (i + 1)) + used_way >> x
+                next_tree = (2 ** (i + 1)) - 1 + (used_way >> x)
 
     def get_index_tag(self, address):
         """
