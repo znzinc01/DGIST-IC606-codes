@@ -1,15 +1,12 @@
 from math import log2
-from datetime import datetime
 """
 USER INPUT
 policy: int. Eviction Policy. 0 for LRU, 1 for pseudo-LRU
 benchmark: int. Benchmark selection: 0 for ping_trace,
            1:perlbench, 2:soplex, 3:povary, 4:libquantum, 5:astar, 6:xalancbmk (inside HW1_6_workloads folder)
-debug_mode: boolean. False for default. set to True to see procedure and execution time.
 """
 option_policy = 0
 option_benchmark = 0
-option_debug_mode = False
 """
 THERE IS NO OPTIONAL VARIABLE BELOW THIS COMMENT.
 """
@@ -25,12 +22,11 @@ bench_list = ["./ping_trace.out",
 
 
 class CacheHW1():
-    def __init__(self, cache_size, ways, block_size, policy_number, debug):
+    def __init__(self, cache_size, ways, block_size, policy_number):
         self.cache_size = cache_size
         self.ways = ways
         self.block_size = block_size
         self.replacement_policy = policy_number
-        self.debug_mode = debug
 
         self.way_bin_digits = int(log2(self.ways))
         self.num_sets = int(self.cache_size * 1024 / (self.block_size * self.ways))
@@ -162,7 +158,6 @@ class CacheHW1():
         self.update_policy(set_index, way)
 
     def run_simulation(self, benchmark_number):
-        start_time = datetime.now()
         with open(bench_list[benchmark_number], "r") as benchmark_file_obj:
             for line in benchmark_file_obj:
                 self.count_total += 1
@@ -184,8 +179,6 @@ class CacheHW1():
                     else:
                         self.miss_write += 1
                         self.set_data(index, self.fetch_data(index, tag))
-                if self.debug_mode and self.count_total % 1000000 == 0:
-                    print(self.count_total)
 
         checksum = 0
         for x in range(self.num_sets):
@@ -216,11 +209,6 @@ class CacheHW1():
             resultio.write("Dirty evictions: {}\n".format(self.evict_dirty))
             resultio.write("Checksum: {}\n".format(checksum_hex))
 
-        # If debug mode is on, print the elapsed time.
-        if self.debug_mode:
-            end_time = datetime.now()
-            print("Elapsed time:", end_time - start_time)
-
 
 with open("./config.txt", "r") as config_file:
     size = int(config_file.readline())
@@ -228,5 +216,5 @@ with open("./config.txt", "r") as config_file:
     block_size = int(config_file.readline())
 
     test_cache = CacheHW1(cache_size=size, ways=ways, block_size=block_size,
-                          policy_number=option_policy, debug=option_debug_mode)
+                          policy_number=option_policy)
     test_cache.run_simulation(benchmark_number=option_benchmark)
