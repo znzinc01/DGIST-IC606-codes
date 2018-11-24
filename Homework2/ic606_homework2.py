@@ -1,5 +1,6 @@
 from datetime import datetime
 
+
 class coreHW2():
     def __init__(self, input_width, input_reservation, input_ROB, config_file_name, trace_file_name, debug_bool):
         self.issue_width = input_width  # N way superscalar
@@ -169,9 +170,9 @@ class coreHW2():
             self.p_fetch()
             if self.trace_file_end and not self.ROB:
                 break
-            if count % 10000 == 0:
+            if count % 100000 == 0:
                 current_time = datetime.now()
-                print(str(current_time), ",", str(current_time - start_time), "passed,", count, "th cycle")
+                print(str(current_time), ",", count, "th cycle,", str(current_time - start_time), "passed")
             if self.debug:
                 print("Cycle: ", count)
                 print("Fetch queue: ", self.fetch_queue)
