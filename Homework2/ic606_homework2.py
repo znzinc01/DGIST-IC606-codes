@@ -1,12 +1,15 @@
 from datetime import datetime
+import sys
+import os
 
 
 class coreHW2():
-    def __init__(self, input_width, input_ROB, input_reservation, config_file_name, trace_file_name, debug_bool):
+    def __init__(self, input_width, input_ROB, input_reservation, trace_file_name, dump, to_file, debug_bool):
         self.issue_width = input_width  # N way superscalar
         self.reservation_size = input_reservation  # ROB_size / 2 or same as ROB_size
         self.ROB_size = input_ROB
-        self.trace_file = open(trace_file_name, "r")
+        self.trace_file_name = trace_file_name
+        self.trace_file = open(self.trace_file_name, "r")
         self.trace_count = 0
         self.trace_file_end = False
 
@@ -39,7 +42,10 @@ class coreHW2():
         self.cnt_MemRead = 0
         self.cnt_MemWrite = 0
 
+        self.to_file = to_file
+        self.dump = dump
         self.debug = debug_bool
+        self.show_all = True
 
     def new_ROB_no(self):
         # ROB is deleted always from top; this means you can get new ROB number with mod calculation.
@@ -165,13 +171,13 @@ class coreHW2():
                                 if not rob_entry["completed"]:  # If it's completed, it's okay to run instantly.
                                     q2 = self.RAT[v2]["ROB"]
                                     execute = False
-
-            if self.RAT[instruction["dest"]]["ROB"] is not None:  # Destination register is used by other instruction.
-                for j in self.ROB:  # in ROB, find that instruction.
-                    if j["no"] == self.RAT[instruction["dest"]]["ROB"]:
-                        self.ROB[self.ROB.index(j)]["destination"] = 0
-                        # Make its destination into dummy(0) so it won't affect current instruction.
-                        break
+            if instruction["dest"] != 0:
+                if self.RAT[instruction["dest"]]["ROB"] is not None:  # Destination register is used by other instruction.
+                    for j in self.ROB:  # in ROB, find that instruction.
+                        if j["no"] == self.RAT[instruction["dest"]]["ROB"]:
+                            self.ROB[self.ROB.index(j)]["destination"] = 0
+                            # Make its destination into dummy(0) so it won't affect current instruction.
+                            break
             self.RAT[instruction["dest"]] = {"ROB": ROB_no, "valid": False}
             # destination register already in use is not a problem: just overwrite it.
 
@@ -241,7 +247,8 @@ class coreHW2():
     def run_simulation(self):
         count = 0
         start_time = datetime.now()
-        print("Starting time: ", str(start_time))
+        if self.debug:
+            print("Starting time: ", str(start_time))
         while True:
             count += 1
             self.p_commit()
@@ -250,33 +257,39 @@ class coreHW2():
             self.p_decode()
             self.p_fetch()
             self.update_popped()
-            if self.trace_file_end and not self.ROB and not self.res_station:
-                break
-            if count % 500000 == 0:
-                current_time = datetime.now()
-                print(str(current_time), ",", count, "th cycle,", str(current_time - start_time), "passed")
+
             if self.debug:
+                if self.show_all:
+                    print("execution_unit", self.execution_unit)
+                    for i in self.RAT:
+                        print(i)
+                    for i in self.res_station:
+                        print(i)
+                    for i in self.ROB:
+                        print(i)
+                    c = input("")
+                    if c != "":
+                        self.show_all = False
+                if count % 500000 == 0:
+                    current_time = datetime.now()
+                    print(str(current_time), ",", count, "th cycle,", str(current_time - start_time), "passed")
+
+            if self.dump == 1 or self.dump == 2:
                 print("= Cycle: ", count)
-                reservation_station_table = ["NOT BUSY"] * (self.reservation_size + 1)
-                for i in self.res_station:
-                    src1 = i["v1"] if i["q1"] is None else "ROB" + str(i["q1"])
-                    src2 = i["v2"] if i["q2"] is None else "ROB" + str(i["q2"])
-                    reservation_station_table[i["rs_no"]] = "ROB" + str(i["ROB"]) + " " + str(src1) + " " + str(src2)
-                for i in range(1, self.reservation_size + 1):
-                    print("RS" + str(i) + " : " + reservation_station_table[i])
+                if self.dump == 2:
+                    reservation_station_table = ["NOT BUSY"] * (self.reservation_size + 1)
+                    for i in self.res_station:
+                        src1 = i["v1"] if i["q1"] is None else "ROB" + str(i["q1"])
+                        src2 = i["v2"] if i["q2"] is None else "ROB" + str(i["q2"])
+                        reservation_station_table[i["rs_no"]] = "ROB" + str(i["ROB"]) + " " + str(src1) + " " + str(src2)
+                    for i in range(1, self.reservation_size + 1):
+                        print("RS" + str(i) + " : " + reservation_station_table[i])
                 for i in self.ROB:
                     print("ROB" + str(i["no"]), " : ", ("C" if i["completed"] else "P"))
+                print("")
 
-                # print("execution_unit", self.execution_unit)
-                #
-                # for i in self.RAT:
-                #     print(i)
-                # for i in self.res_station:
-                #     print(i)
-                # for i in self.ROB:
-                #     print(i)
-
-                t = input("")
+            if self.trace_file_end and not self.ROB and not self.res_station:
+                break
         try:
             self.trace_file.close()
         except:
@@ -288,8 +301,34 @@ class coreHW2():
         print("IntAlu", self.cnt_IntAlu)
         print("MemRead", self.cnt_MemRead)
         print("MemWrite", self.cnt_MemWrite)
+        if self.to_file:
+            if not os.path.exists("./results/"):
+                os.mkdir("./results/")
+            with open("./results/{}_{}_{}_{}.txt".format(str(self.issue_width), str(self.ROB_size),
+                      str(self.reservation_size), self.trace_file_name.split("/")[2].split("_")[2].split(".")[0]),
+                      "w") as wfile:
+                wfile.write(str(self.issue_width) + "\n")
+                wfile.write(str(self.ROB_size) + "\n")
+                wfile.write(str(self.reservation_size) + "\n")
+                wfile.write(str(self.trace_file_name) + "\n")
+                wfile.write("Cycles " + str(count) + "\n")
+                wfile.write("IPC " + str(self.trace_count / count) + "\n")
+                wfile.write("Total Insts " + str(self.trace_count) + "\n")
+                wfile.write("IntAlu " + str(self.cnt_IntAlu) + "\n")
+                wfile.write("MemRead " + str(self.cnt_MemRead) + "\n")
+                wfile.write("MemWrite " + str(self.cnt_MemWrite) + "\n")
 
 
-OOO_core = coreHW2(8, 16, 8, None, "./HW2_workloads/hw2_trace_bzip2.out", False)
-# issue width: 1~8, RS size: rob/2 or rob, rob size: 16-512
-OOO_core.run_simulation()
+if __name__ == "__main__":
+    if len(sys.argv) != 3:
+        print("Usage: $ python ic606_homework2.py config.txt (trace_file).out")
+    else:
+        with open(sys.argv[1], "r") as config:
+            dump = int(config.readline())
+            width = int(config.readline())
+            ROB_size = int(config.readline())
+            Reservation_size = int(config.readline())
+
+        OOO_core = coreHW2(width, ROB_size, Reservation_size, "./HW2_workloads/" + sys.argv[2], dump, False, True)
+        # issue width: 1~8, RS size: rob/2 or rob, rob size: 16-512
+        OOO_core.run_simulation()
