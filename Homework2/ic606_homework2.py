@@ -2,7 +2,7 @@ from datetime import datetime
 
 
 class coreHW2():
-    def __init__(self, input_width, input_reservation, input_ROB, config_file_name, trace_file_name, debug_bool):
+    def __init__(self, input_width, input_ROB, input_reservation, config_file_name, trace_file_name, debug_bool):
         self.issue_width = input_width  # N way superscalar
         self.reservation_size = input_reservation  # ROB_size / 2 or same as ROB_size
         self.ROB_size = input_ROB
@@ -12,16 +12,28 @@ class coreHW2():
 
         self.ROB_entry = {"no": None, "operation": None, "value": None, "destination": None, "completed": None}
         self.ROB = []  # max len = self.ROB_size
-        self.ROB_no = 0
+        # ROB number starts at 1, but ROB list index starts at 0
+        self.ROB_no = 1
+
         self.fetch_queue_entry = {"inst": None, "dest": None, "src1": None, "src2": None, "addr": None}
         self.fetch_queue = []  # max len = 2 * self.issue_width
-        self.res_station_entry = {"ROB": None, "time_left": None, "busy": None, "inst": None, "v1": None, "v2": None,
-                                  "q1": None, "q2": None}
-        self.res_station = []  # max len = self.ROB.size
+        self.fetch_no = 1
+
+        self.res_station_entry = {"ROB": None, "time_left": None, "busy": None, "execute": None,  "inst": None, "v1": None, "v2": None,
+                                  "q1": None, "q2": None, "rs_no": None}
+        self.res_station = []  # max len = self.ROB_size
+        self.rs_table = [True] + [False] * self.reservation_size
+
+        # Res_station number starts at 1, but list index starts at 0
         self.RAT_entry = {"ROB": None, "valid": True}  # valid True: has recent info, False: not recent info
         self.RAT = [self.RAT_entry.copy()] * 17  # max len: 17 (16 registers(R1-R16) in the RSA, starting with 1)
+        # RAT No. 0 is dummy: it may have a garbage content.
 
         self.execution_unit = []  # stores the res station indexes of executing instruction
+
+        self.ROB_pop_list = []
+        self.rs_pop_list = []
+        self.fetch_pop_list = []
 
         self.cnt_IntAlu = 0
         self.cnt_MemRead = 0
@@ -30,97 +42,152 @@ class coreHW2():
         self.debug = debug_bool
 
     def new_ROB_no(self):
+        # ROB is deleted always from top; this means you can get new ROB number with mod calculation.
         tmp = self.ROB_no
-        self.ROB_no = (self.ROB_no + 1) if self.ROB_no < (self.ROB_size - 1) else 0
+        self.ROB_no = (self.ROB_no + 1) if self.ROB_no < self.ROB_size else 1
         return tmp
 
-    def p_commit(self):
-        pop_list = []
-        for instruction in self.res_station:
-            if instruction["time_left"] == 0:
-                pop_list.append(instruction)
-                for k in self.ROB:
-                    if k["no"] == instruction["ROB"]:
-                        k["completed"] = True
-                        for l in self.res_station:
-                            if l["q1"] == k["destination"]:
-                                l["v1"] = l["q1"]
-                                l["q1"] = None
-                            elif l["q2"] == k["destination"]:
-                                l["v2"] = l["q2"]
-                                l["q2"] = None
-                        break
-        for j in pop_list:
-            self.res_station.remove(j)
+    def new_fetch_no(self):
+        tmp = self.fetch_no
+        self.fetch_no = (self.fetch_no + 1) if self.fetch_no < self.issue_width else 1
+        return tmp
 
-        pop_list = []
-        for single_rob in self.ROB:
-            if single_rob["completed"]:
-                pop_list.append(single_rob)
-                self.RAT[single_rob["destination"]] = self.RAT_entry.copy()
+    def new_rs_no(self):
+        tmp = self.rs_table.index(False)
+        self.rs_table[tmp] = True
+        return tmp
+
+    def free_rs(self, rs_no):
+        self.rs_table[rs_no] = False
+
+    def p_commit(self):
+        for rob_entry in self.ROB:
+            # From the top, look up weather this ROB entry is completed.
+            if rob_entry["completed"]:
+                # If it is, it's going to be deleted from ROB.
+                self.ROB_pop_list.append(rob_entry)
+                if rob_entry["destination"]:
+                    self.RAT[rob_entry["destination"]] = self.RAT_entry.copy()
+                # Return related RAT into initial state.
             else:
+                #If not completed entry appears, stop deleting.
                 break
-        for j in pop_list:
-            self.ROB.remove(j)
 
     def p_execute(self):
-        for execution in self.execution_unit:
-            self.res_station[execution]["time_left"] -= 1
+        for i in range(len(self.res_station)):
+            if self.res_station[i]["ROB"] in self.execution_unit:
+                if self.res_station[i]["time_left"] == 0:
+                    self.res_station[i]["busy"] = False
+                else:
+                    self.res_station[i]["time_left"] -= 1
+
+        for instruction in self.res_station:
+            # For each instructions in reservation station,
+            if instruction["busy"] is False:
+                # If that instruction is not busy,
+                self.rs_pop_list.append(instruction)
+                # This instruction is going to be deleted from reservation station. And also...
+                for rob_entry in self.ROB:
+                    if rob_entry["no"] == instruction["ROB"]:
+                        # Find a entry on ROB related with this instruction.
+                        rob_entry["completed"] = True
+                        # Mark ROB's complete flag as true.
+                        for res_entry in self.res_station:
+                            # Let reservation station know that This rob entry has finished, so q1 and q2 can be v1 v2.
+                            if res_entry["q1"] == rob_entry["no"]:
+                                i = self.res_station.index(res_entry)
+                                self.res_station[i]["v1"] = rob_entry["destination"]
+                                self.res_station[i]["q1"] = 0
+                                self.res_station[i]["execute"] = True
+                            if res_entry["q2"] == rob_entry["no"]:
+                                i = self.res_station.index(res_entry)
+                                self.res_station[i]["v2"] = rob_entry["destination"]
+                                self.res_station[i]["q2"] = 0
+                                self.res_station[i]["execute"] = True
+                        break
 
     def p_issue(self):
         self.execution_unit = []
         issue_count = 0
-        for i in range(len(self.res_station)):
-            instruction = self.res_station[i]
-            if instruction["q1"] is None and instruction["q2"] is None:
-                self.execution_unit.append(int(i))
+        for instruction in self.res_station:
+            if instruction["q1"] == 0 and instruction["q2"] == 0 and instruction["execute"] and instruction["busy"]:
+                # Instruction executable immediately: send to execution unit.
+                self.execution_unit.append(instruction["ROB"])
                 issue_count += 1
-            if issue_count == self.issue_width:
+            if issue_count >= self.issue_width:
                 break
 
     def p_decode(self):
-        count = self.issue_width
-        if not self.fetch_queue:
-            # ff fetch queue is empty, pass
-            pass
-        elif len(self.ROB_entry) == self.ROB_size:
-            # If ROB is full, pass
-            pass
-        elif len(self.res_station) == self.reservation_size:
-            # If reservation station is full, pass
-            pass
-        else:
-            while count > 0:
-                instruction = self.fetch_queue.pop(0)
-                ROB_no = self.new_ROB_no()
+        for i in range(self.issue_width if len(self.fetch_queue) > self.issue_width else len(self.fetch_queue)):
+            if not self.fetch_queue:
+                # ff fetch queue is empty, pass
+                break
+            elif len(self.ROB) == self.ROB_size:
+                # If ROB is full, pass
+                break
+            elif len(self.res_station) == self.reservation_size:
+                # If reservation station is full, pass
+                break
 
-                self.RAT[instruction["dest"]] = {"ROB": ROB_no, "valid": False}
-                # destination register already in use is not a problem: just overwrite it
-                v1, v2 = instruction["src1"], instruction["src2"]
-                if self.RAT[instruction["src1"]]["ROB"] is (not None and not 0 and not ROB_no):
-                    v1, q1 = None, instruction["src1"]
-                else:
-                    v1, q1 = instruction["src1"], None
-                if self.RAT[instruction["src2"]]["ROB"] is (not None and not 0 and not ROB_no):
-                    v2, q2 = None, instruction["src2"]
-                else:
-                    v2, q2 = instruction["src2"], None
+            # If non of above, proceed decoding.
+            instruction = self.fetch_queue[i]
+            self.fetch_pop_list.append(instruction)
+            # Get the oldest instruction from fetch queue and delete it from fetch queue.
+            ROB_no = self.new_ROB_no()
+            # Get new ROB number(starts at 1)
 
-                self.ROB.append({"no": ROB_no,
-                                 "operation": instruction["inst"],
-                                 "value": None,
-                                 "destination": instruction["dest"],
-                                 "completed": False})
-                self.res_station.append({"ROB": ROB_no,
-                                         "time_left": (3 if instruction["inst"] == "MemRead" else 1),
-                                         "busy": False,
-                                         "inst": instruction["inst"],
-                                         "v1": v1,
-                                         "v2": v2,
-                                         "q1": q1,
-                                         "q2": q2})
+            v1, v2 = instruction["src1"], instruction["src2"]
+            q1, q2 = 0, 0
+            # First, set the v1 v2 as src1 and src2 from instruction.
+            execute = True
+            # execution bool initialization.
 
-                count -= 1
+            # If v1 register is already used by other ROB, store that ROB number into q1 and make v1 0(None).
+            if v1 != 0 and not self.RAT[v1]["ROB"] is None\
+                    and self.RAT[v1]["ROB"] != ROB_no:  # If that ROB is the ROB itself, skip this.
+                for rob_entry in self.ROB:
+                    if rob_entry["no"] == self.RAT[v1]["ROB"] and not rob_entry["completed"]:
+                        v1, q1 = 0, self.RAT[v1]["ROB"]
+                        execute = False  # Indicates that this instruciton cannot be executed immediately.
+                        break
+
+            # If v2 register is already used by other ROB, store that ROB number into q2 and make v2 0(None).
+            if v2 != 0 and not self.RAT[v2]["ROB"] is None \
+                    and self.RAT[v2]["ROB"] != ROB_no:  # If that ROB is the ROB itself, skip this.
+                for rob_entry in self.ROB:
+                    if rob_entry["no"] == self.RAT[v2]["ROB"] and not rob_entry["completed"]:
+                        v2, q2 = 0, self.RAT[v2]["ROB"]
+                        execute = False  # Indicates that this instruciton cannot be executed immediately.
+                        break
+
+            if not self.RAT[instruction["dest"]]["ROB"] is None:
+                for i in self.ROB:
+                    if i["no"] == self.RAT[instruction["dest"]]["ROB"]:
+                        self.ROB[self.ROB.index(i)]["destination"] = None
+                        break
+            self.RAT[instruction["dest"]] = {"ROB": ROB_no, "valid": False}
+            # Update RAT.
+            # destination register already in use is not a problem: just overwrite it
+
+            # Make a new entry on ROB
+            self.ROB.append({"no": ROB_no,
+                             "operation": instruction["inst"],
+                             "value": None,
+                             "destination": None if instruction["dest"] == 0 else instruction["dest"],
+                             "completed": False})
+
+            # Make a new entry on reservation station.
+            self.res_station.append({"ROB": ROB_no,
+                                     "time_left": (3 if instruction["inst"] == "MemRead" else 1),
+                                     "busy": True,
+                                     "execute": execute,
+                                     "inst": instruction["inst"],
+                                     "v1": v1,
+                                     "v2": v2,
+                                     "q1": q1,
+                                     "q2": q2,
+                                     "rs_no": self.new_rs_no()})
+
 
     def p_fetch(self):
         # eliminating inner None is done in decode state
@@ -147,7 +214,8 @@ class coreHW2():
                                              "dest": int(tmp[1]),
                                              "src1": int(tmp[2]),
                                              "src2": int(tmp[3]),
-                                             "addr": tmp[4]})
+                                             "addr": tmp[4],
+                                             "no": self.new_fetch_no()})
                     # (inst_type, dest, src1, src2, addr_hex)
                 else:
                     self.trace_file_end = True
@@ -155,12 +223,21 @@ class coreHW2():
                     break
             return True
 
+    def update_popped(self):
+        for i in self.ROB_pop_list:
+            self.ROB.remove(i)
+        for j in self.rs_pop_list:
+            self.free_rs(j["rs_no"])
+            self.res_station.remove(j)
+        for k in self.fetch_pop_list:
+            self.fetch_queue.remove(k)
+        self.ROB_pop_list, self.rs_pop_list, self.fetch_pop_list = [], [], []
+
 
     def run_simulation(self):
         count = 0
         start_time = datetime.now()
         print("Starting time: ", str(start_time))
-        print("Total lines: 1000,0000")
         while True:
             count += 1
             self.p_commit()
@@ -168,18 +245,33 @@ class coreHW2():
             self.p_execute()
             self.p_decode()
             self.p_fetch()
+            self.update_popped()
             if self.trace_file_end and not self.ROB:
                 break
-            if count % 100000 == 0:
+            if count % 500000 == 0:
                 current_time = datetime.now()
                 print(str(current_time), ",", count, "th cycle,", str(current_time - start_time), "passed")
             if self.debug:
-                print("Cycle: ", count)
-                print("Fetch queue: ", self.fetch_queue)
-                print("RAT: ", self.RAT)
-                print("Execution Unit: ", self.execution_unit)
-                print("ROB: ", self.ROB)
-                print("Reservation station: ", self.res_station)
+                print("= Cycle: ", count)
+                reservation_station_table = ["NOT BUSY"] * (self.reservation_size + 1)
+                for i in self.res_station:
+                    src1 = "V" if i["q1"] == 0 else "ROB" + str(i["q1"])
+                    src2 = "V" if i["q2"] == 0 else "ROB" + str(i["q2"])
+                    reservation_station_table[i["rs_no"]] = "ROB" + str(i["ROB"]) + " " + src1 + " " + src2
+                for i in range(1, self.reservation_size + 1):
+                    print("RS" + str(i) + " : " + reservation_station_table[i])
+                for i in self.ROB:
+                    print("ROB" + str(i["no"]), " : ", ("C" if i["completed"] else "P"))
+
+                for i in self.RAT:
+                    print(i)
+                for i in self.res_station:
+                    print(i)
+                for i in self.ROB:
+                    print(i)
+
+
+
                 t = input("")
         try:
             self.trace_file.close()
@@ -194,6 +286,6 @@ class coreHW2():
         print("MemWrite", self.cnt_MemWrite)
 
 
-OOO_core = coreHW2(4, 8, 16, None, "./HW2_workloads/hw2_trace_mcf.out", False)
+OOO_core = coreHW2(8, 16, 8, None, "./HW2_workloads/hw2_trace_bzip2.out", False)
 # issue width: 1~8, RS size: rob/2 or rob, rob size: 16-512
 OOO_core.run_simulation()
