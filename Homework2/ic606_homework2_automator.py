@@ -13,3 +13,4 @@ for i in [1, 2, 4, 8]:
                 ooo = hw2.coreHW2(8, 16, 8, "./HW2_workloads/" + l,
                                   0, True, False)
                 ooo.run_simulation()
+                print("============================")
